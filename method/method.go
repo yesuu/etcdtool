@@ -3,7 +3,7 @@ package method
 import (
 	"errors"
 
-	"etcdtool/entity"
+	"github.com/yesuu/etcdtool/entity"
 )
 
 var m = map[string]func(*entity.Conf) (string, error){}

@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"etcdtool/entity"
-	"etcdtool/method"
+	"github.com/yesuu/etcdtool/entity"
+	"github.com/yesuu/etcdtool/method"
 )
 
 func main() {
@@ -16,7 +16,9 @@ func main() {
 		return
 	}
 	conf := new(entity.Conf)
-	flag.BoolVar(&conf.Array, "s", false, "使用数组格式")
+	flag.BoolVar(&conf.Toml, "toml", false, "使用 toml 输入输出")
+	flag.BoolVar(&conf.Json, "json", false, "使用 json 输入输出")
+	flag.BoolVar(&conf.Array, "s", false, "使用数组格式，存在 json 选项时有效")
 	flag.Parse()
 	conf.Src = flag.Arg(1)
 	conf.Dest = flag.Arg(2)
@@ -28,6 +30,6 @@ func main() {
 }
 
 func help() {
-	fmt.Println("etcdtool dump http://localhost:2379 -")
-	fmt.Println("etcdtool restore - http://localhost:2379")
+	fmt.Println("etcdtool dump http://localhost:2379 dump.toml")
+	fmt.Println("etcdtool restore dump.toml http://localhost:2379")
 }

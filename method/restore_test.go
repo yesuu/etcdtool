@@ -4,10 +4,10 @@ import (
 	"testing"
 )
 
-func Test_strToNode(t *testing.T) {
+func Test_jsonToNodeArray(t *testing.T) {
 	src := `[{"key":"/test/abc","value":"abc"},{"key":"/test/def","value":"def"}]`
 
-	nodes, err := strToNode([]byte(src))
+	nodes, err := jsonToNodeArray([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,11 +25,11 @@ func Test_strToNode(t *testing.T) {
 	}
 }
 
-func Test_strToNode2(t *testing.T) {
+func Test_jsonToNode(t *testing.T) {
 	src := `{"key":"/test/abc","value":"abc"}` + "\n" +
 		`{"key":"/test/def","value":"def"}` + "\n"
 
-	nodes, err := strToNode2([]byte(src))
+	nodes, err := jsonToNode([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}

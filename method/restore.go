@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 
-	"etcdtool/entity"
+	"github.com/yesuu/etcdtool/entity"
 
+	"github.com/BurntSushi/toml"
 	"github.com/coreos/etcd/client"
 )
 
@@ -18,21 +21,55 @@ func init() {
 }
 
 func Restore(conf *entity.Conf) (string, error) {
-	in, err := ioutil.ReadAll(os.Stdin)
-	if err != nil {
-		return "", err
-	}
-
+	var in []byte
+	var err error
 	var src client.Nodes
-	if conf.Array {
-		src, err = strToNode(in)
+	if conf.Src == "-" {
+		in, err = ioutil.ReadAll(os.Stdin)
 		if err != nil {
 			return "", err
 		}
+		if conf.Toml {
+			src, err = tomlToNode(in)
+			if err != nil {
+				return "", err
+			}
+		} else if conf.Json && conf.Array {
+			src, err = jsonToNodeArray(in)
+			if err != nil {
+				return "", err
+			}
+		} else if conf.Json && !conf.Array {
+			src, err = jsonToNode(in)
+			if err != nil {
+				return "", err
+			}
+		} else {
+			return "", errors.New("无法自动判断读取格式")
+		}
 	} else {
-		src, err = strToNode2(in)
+		in, err = ioutil.ReadFile(conf.Src)
 		if err != nil {
 			return "", err
+		}
+		ext := path.Ext(conf.Src)
+		if conf.Toml || ext == ".toml" {
+			src, err = tomlToNode(in)
+			if err != nil {
+				return "", err
+			}
+		} else if (conf.Json || ext == ".json") && conf.Array {
+			src, err = jsonToNodeArray(in)
+			if err != nil {
+				return "", err
+			}
+		} else if (conf.Json || ext == ".json") && !conf.Array {
+			src, err = jsonToNode(in)
+			if err != nil {
+				return "", err
+			}
+		} else {
+			return "", errors.New("无法自动判断读取格式")
 		}
 	}
 
@@ -66,15 +103,31 @@ func Restore(conf *entity.Conf) (string, error) {
 	return s, nil
 }
 
+func tomlToNode(src []byte) (client.Nodes, error) {
+	nodes := map[string]string{}
+	err := toml.Unmarshal(src, &nodes)
+	if err != nil {
+		return nil, err
+	}
+	result := client.Nodes{}
+	for k, v := range nodes {
+		result = append(result, &client.Node{
+			Key:   k,
+			Value: v,
+		})
+	}
+	return result, nil
+}
+
 // src 为 [{},{}]
-func strToNode(src []byte) (client.Nodes, error) {
+func jsonToNodeArray(src []byte) (client.Nodes, error) {
 	nodes := new(client.Nodes)
 	err := json.Unmarshal(src, nodes)
 	return *nodes, err
 }
 
 // src 为 "{}\n{}\n"
-func strToNode2(src []byte) (client.Nodes, error) {
+func jsonToNode(src []byte) (client.Nodes, error) {
 	result := client.Nodes{}
 	for _, v := range bytes.Split(bytes.TrimSpace(src), []byte("\n")) {
 		node := new(client.Node)
