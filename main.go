@@ -16,6 +16,7 @@ func main() {
 		return
 	}
 	conf := new(entity.Conf)
+	flag.BoolVar(&conf.Fake, "fake", false, "只输出执行计划，不实际执行")
 	flag.BoolVar(&conf.Toml, "toml", false, "使用 toml 输入输出")
 	flag.BoolVar(&conf.Json, "json", false, "使用 json 输入输出")
 	flag.BoolVar(&conf.Array, "s", false, "使用数组格式，存在 json 选项时有效")
@@ -32,4 +33,5 @@ func main() {
 func help() {
 	fmt.Println("etcdtool dump http://localhost:2379 dump.toml")
 	fmt.Println("etcdtool restore dump.toml http://localhost:2379")
+	fmt.Println("etcdtool up http://localhost:2379 up.toml")
 }
