@@ -2,18 +2,20 @@ package method
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/yesuu/etcdtool/entity"
 
 	"github.com/BurntSushi/toml"
-	"github.com/coreos/etcd/client"
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
+	"github.com/coreos/etcd/mvcc/mvccpb"
 )
 
 func init() {
@@ -73,49 +75,43 @@ func Deploy(conf *entity.Conf) (string, error) {
 		return out, nil
 	}
 
-	c, err := client.New(client.Config{
-		Endpoints: []string{conf.Src},
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{conf.Src},
+		DialTimeout: 6 * time.Second,
 	})
 	if err != nil {
 		return "", err
 	}
-	kapi := client.NewKeysAPI(c)
+	defer cli.Close()
 
 	for _, k := range createList {
-		resp, err := kapi.Create(context.Background(), k, local[k])
+		resp, err := cli.Put(context.Background(), k, local[k])
 		if err != nil {
 			return out, err
 		}
-		respJson, err := json.MarshalIndent(resp, "", "  ")
-		if err != nil {
-			return out, err
-		}
-		out += string(respJson) + "\n"
+		out += fmt.Sprintln(resp)
 	}
 	for _, k := range updateList {
-		resp, err := kapi.Update(context.Background(), k, local[k])
+		resp, err := clientv3.NewKV(cli).
+			Txn(context.Background()).
+			If(clientv3.Compare(clientv3.Value(k), "=", remote[k])).
+			Then(clientv3.OpPut(k, local[k])).
+			Commit()
 		if err != nil {
 			return out, err
 		}
-		respJson, err := json.MarshalIndent(resp, "", "  ")
-		if err != nil {
-			return out, err
-		}
-		out += string(respJson) + "\n"
+		out += fmt.Sprintln(resp)
 	}
 	for _, k := range deleteList {
-		resp, err := kapi.Delete(context.Background(), k, &client.DeleteOptions{
-			PrevValue: remote[k],
-			Recursive: true,
-		})
+		resp, err := clientv3.NewKV(cli).
+			Txn(context.Background()).
+			If(clientv3.Compare(clientv3.Value(k), "=", remote[k])).
+			Then(clientv3.OpDelete(k, clientv3.WithPrefix())).
+			Commit()
 		if err != nil {
 			return out, err
 		}
-		respJson, err := json.MarshalIndent(resp, "", "  ")
-		if err != nil {
-			return out, err
-		}
-		out += string(respJson) + "\n"
+		out += fmt.Sprintln(resp)
 	}
 
 	out += "> ok\n"
@@ -186,29 +182,27 @@ func getLocal(conf *entity.Conf) (map[string]string, []string, []string, error) 
 }
 
 func getRemote(conf *entity.Conf, contextUrl, ignoreUrl []string) (map[string]string, error) {
-	c, err := client.New(client.Config{
-		Endpoints: []string{conf.Src},
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{conf.Src},
+		DialTimeout: 6 * time.Second,
 	})
 	if err != nil {
 		return nil, err
 	}
+	defer cli.Close()
 
-	kapi := client.NewKeysAPI(c)
-
-	nodes := client.Nodes{}
+	nodes := []*mvccpb.KeyValue{}
 	for _, ctxUrl := range contextUrl {
-		resp, err := kapi.Get(context.Background(), ctxUrl, &client.GetOptions{
-			Recursive: true,
-			Sort:      true,
-		})
+		resp, err := cli.Get(context.Background(), ctxUrl,
+			clientv3.WithPrefix(),
+		)
 		if err != nil {
-			err1, ok := err.(client.Error)
-			if ok && err1.Code == client.ErrorCodeKeyNotFound {
+			if err == rpctypes.ErrKeyNotFound {
 				continue
 			}
 			return nil, err
 		}
-		nodes = append(nodes, resp.Node)
+		nodes = append(nodes, resp.Kvs...)
 	}
 
 	m := nodeToMap(nodes)
@@ -222,20 +216,10 @@ func getRemote(conf *entity.Conf, contextUrl, ignoreUrl []string) (map[string]st
 	return m, nil
 }
 
-func nodeToMap(nodes client.Nodes) map[string]string {
+func nodeToMap(nodes []*mvccpb.KeyValue) map[string]string {
 	m := map[string]string{}
 	for _, node := range nodes {
-		nodeToMapF(node, m)
+		m[string(node.Key)] = string(node.Value)
 	}
 	return m
-}
-
-func nodeToMapF(node *client.Node, m map[string]string) {
-	if node.Dir {
-		for _, v := range node.Nodes {
-			nodeToMapF(v, m)
-		}
-	} else {
-		m[node.Key] = node.Value
-	}
 }
